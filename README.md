@@ -48,8 +48,6 @@ This notebook is **not** about achieving the highest accuracy. Its purpose is to
 4. **Compare** two classifiers — Decision Tree and Gradient Boosting — and observe the effect of model complexity on overfitting.
 5. **Motivate** the need for `sklearn.pipeline.Pipeline` by experiencing the manual approach's verbosity and error-proneness first-hand.
 
-This notebook is **Part 1** of a two-part series. Part 2 (Day 30) will replicate this exact workflow using a proper sklearn Pipeline.
-
 ---
 
 ## 📂 Dataset
@@ -505,7 +503,7 @@ titanic-without-pipeline/
 
 - [Kaggle Titanic Competition](https://www.kaggle.com/competitions/titanic) for the dataset
 - [scikit-learn Documentation](https://scikit-learn.org/stable/) — `SimpleImputer`, `OneHotEncoder`, classifiers reference
-- **100 Days of ML** — the broader learning series this notebook belongs to
+
 
 ---
 
