@@ -1,514 +1,462 @@
-<div align="center">
+# 🚢 Titanic Survival Prediction — Manual Preprocessing vs Sklearn Pipeline
 
-# 🚢 Titanic Survival Prediction
-### Manual Preprocessing — Without sklearn Pipeline
-
-![Python](https://img.shields.io/badge/Python-3.8%2B-blue?style=for-the-badge&logo=python&logoColor=white)
-![scikit-learn](https://img.shields.io/badge/scikit--learn-1.0%2B-orange?style=for-the-badge&logo=scikit-learn&logoColor=white)
-![Pandas](https://img.shields.io/badge/Pandas-1.3%2B-150458?style=for-the-badge&logo=pandas&logoColor=white)
-![Jupyter](https://img.shields.io/badge/Jupyter-Notebook-F37626?style=for-the-badge&logo=jupyter&logoColor=white)
-![Status](https://img.shields.io/badge/Status-Complete-brightgreen?style=for-the-badge)
-
->
-> Building a Titanic survival classifier **entirely without** sklearn.pipeline.Pipeline —
-> every preprocessing step is coded manually to deeply understand what happens inside a pipeline.
-
-</div>
-
----
-
-## 📋 Table of Contents
-
-- [Project Overview](#-project-overview)
-- [Dataset](#-dataset)
-- [Exploratory Data Analysis](#-exploratory-data-analysis)
-- [Preprocessing Pipeline (Manual)](#-preprocessing-pipeline-manual)
-- [Feature Matrix](#-feature-matrix)
-- [Models](#-models)
-- [Results & Evaluation](#-results--evaluation)
-- [Bugs Found & Fixed](#-bugs-found--fixed)
-- [Key Learnings](#-key-learnings)
-- [Manual vs Pipeline — Comparison](#-manual-vs-pipeline--comparison)
-- [How to Run](#-how-to-run)
-- [Dependencies](#-dependencies)
-- [Repository Structure](#-repository-structure)
-- [Next Steps](#-next-steps)
+> A hands-on comparison of doing preprocessing manually step-by-step versus
+> wrapping the exact same logic inside a clean, reproducible `sklearn` Pipeline.
 
 ---
 
 ## 📌 Project Overview
 
-The Titanic dataset is one of the most well-known beginner ML datasets. The goal is to predict whether a passenger **survived** the Titanic disaster based on features like passenger class, sex, age, fare, and port of embarkation.
+This project tackles the classic **Titanic survival prediction** problem, but the
+real learning goal here isn't just the model — it's understanding *how* to
+structure an ML workflow properly.
 
-This notebook is **not** about achieving the highest accuracy. Its purpose is to:
+Two separate notebooks are maintained side-by-side:
 
-1. **Understand** every preprocessing step explicitly — what happens to each column and why.
-2. **Learn** the correct way to apply `SimpleImputer`, `OneHotEncoder`, and `train_test_split` without leaking test data into training.
-3. **Manually assemble** the final feature matrix using `np.concatenate`, which teaches the exact column-ordering discipline that `ColumnTransformer` automates.
-4. **Compare** two classifiers — Decision Tree and Gradient Boosting — and observe the effect of model complexity on overfitting.
-5. **Motivate** the need for `sklearn.pipeline.Pipeline` by experiencing the manual approach's verbosity and error-proneness first-hand.
+| Notebook | Approach |
+|----------|----------|
+| `without_pipeline.ipynb` | Manual preprocessing — impute, encode, scale, and concatenate by hand |
+| `Titanic_by_pipelining.ipynb` | Same preprocessing logic, refactored into a clean `sklearn` Pipeline |
+
+Both notebooks use the same dataset, the same features, the same transformations,
+and the same model. The only difference is *how* the preprocessing is organized.
+This makes it easy to see exactly what a Pipeline buys you.
 
 ---
 
 ## 📂 Dataset
 
-**Source:** [Kaggle — Titanic: Machine Learning from Disaster](https://www.kaggle.com/competitions/titanic/data)
+**Source:** [Kaggle — Titanic: Machine Learning from Disaster](https://www.kaggle.com/competitions/titanic)
 
-```
-train.csv — 891 rows × 12 columns
-```
+The training file (`train.csv`) contains **891 rows** and **12 columns**.
 
-### Column Descriptions
+### Raw Features
 
 | Column | Type | Description |
-|---|---|---|
+|--------|------|-------------|
 | `PassengerId` | int | Unique passenger identifier |
-| `Survived` | int (0/1) | **Target** — 0 = Did not survive, 1 = Survived |
+| `Survived` | int (0/1) | Target — 0 = did not survive, 1 = survived |
 | `Pclass` | int (1/2/3) | Ticket class — proxy for socio-economic status |
-| `Name` | string | Passenger full name |
-| `Sex` | string | male / female |
-| `Age` | float | Age in years — **has missing values (~19.8%)** |
-| `SibSp` | int | Number of siblings/spouses aboard |
-| `Parch` | int | Number of parents/children aboard |
+| `Name` | string | Passenger name |
+| `Sex` | string | `male` / `female` |
+| `Age` | float | Age in years (has missing values) |
+| `SibSp` | int | No. of siblings/spouses aboard |
+| `Parch` | int | No. of parents/children aboard |
 | `Ticket` | string | Ticket number |
 | `Fare` | float | Passenger fare |
-| `Cabin` | string | Cabin number — **heavily missing (~77.1%)** |
-| `Embarked` | string | Port of embarkation: C = Cherbourg, Q = Queenstown, S = Southampton — **2 missing** |
+| `Cabin` | string | Cabin number (heavily missing) |
+| `Embarked` | string | Port of embarkation — C = Cherbourg, Q = Queenstown, S = Southampton |
 
-### Missing Values Summary
+### Missing Values (in raw data)
 
-| Column | Missing Count | Missing % | Action Taken |
-|---|---|---|---|
-| `Age` | ~177 | ~19.8% | Mean imputation |
-| `Cabin` | ~687 | ~77.1% | Column dropped |
-| `Embarked` | 2 | ~0.2% | Mode imputation |
+| Column | Missing Count | Missing % |
+|--------|--------------|-----------|
+| `Cabin` | 687 | 77.1% |
+| `Age` | 177 | 19.9% |
+| `Embarked` | 2 | 0.2% |
+
+### Columns Dropped
+
+`PassengerId`, `Name`, `Ticket`, and `Cabin` are dropped before any modeling:
+
+- `PassengerId` — arbitrary index, no predictive signal
+- `Name` — raw text; title extraction could be done but is out of scope here
+- `Ticket` — alphanumeric with no consistent structure
+- `Cabin` — 77% missing; imputing this much data would introduce more noise than signal
+
+After dropping, the feature set is:
+**`Pclass`, `Sex`, `Age`, `SibSp`, `Parch`, `Fare`, `Embarked`**
 
 ---
 
 ## 🔍 Exploratory Data Analysis
 
-### 1. Basic Inspection
-```python
-df.sample(5)          # Random sample of 5 rows
-df.info()             # Dtypes, non-null counts
-df.describe()         # Statistical summary for numeric columns
-df.isnull().sum()     # Missing value counts per column
-df.duplicated().sum() # Duplicate row check
+A few key observations from the EDA in `without_pipeline.ipynb`:
+
+### Survival by Sex
 ```
-
-### 2. Embarked Distribution
-```python
-df['Embarked'].value_counts()
-# S    644   (Southampton — most common)
-# C    168   (Cherbourg)
-# Q     77   (Queenstown)
+Survived    0    1
+Sex
+female     81  233   →  74.2% survival rate
+male      468  109   →  18.9% survival rate
 ```
+Sex is one of the strongest predictors. The "women and children first" protocol
+is clearly visible in the data.
 
-### 3. Correlation Analysis
-```python
-df.corr(numeric_only=True)
+### Class Imbalance
 ```
-
-Notable correlations with `Survived`:
-
-| Feature | Correlation | Interpretation |
-|---|---|---|
-| `Pclass` | Negative | Lower class = lower survival rate |
-| `Fare` | Positive | Higher fare = higher survival rate |
-| `Sex` | Strong (after encoding) | Strongest single predictor |
-| `SibSp` / `Parch` | Weak | Minor influence |
-
-### 4. Survival by Sex
-```python
-sns.heatmap(pd.crosstab(df['Sex'], df['Survived']))
+Survived = 0  →  549 passengers  (61.6%)
+Survived = 1  →  342 passengers  (38.4%)
 ```
+The dataset is moderately imbalanced. `stratify=y` is used in `train_test_split`
+to preserve this ratio in both train and test sets.
 
-| Sex | Did Not Survive | Survived |
-|---|---|---|
-| Female | 81 | 233 |
-| Male | 468 | 109 |
+### Age Distribution
+Age has **177 missing values (19.9%)**. These are imputed using the **mean age**
+(~29.8 years). Mean imputation is a reasonable baseline here, though more
+sophisticated approaches (e.g., median, or model-based imputation grouped by
+`Pclass`) could be explored.
 
-Females had a significantly higher survival rate — the strongest signal in the dataset ("women and children first").
-
-### 5. Pairplot
-```python
-sns.pairplot(df, hue="Survived")
+### Embarked Distribution
 ```
-Visualises pairwise relationships between all numeric features, coloured by survival status. Useful for spotting class separability.
+S (Southampton)  →  644 passengers  (72.3%)
+C (Cherbourg)    →  168 passengers  (18.9%)
+Q (Queenstown)   →   77 passengers  (8.6%)
+```
+Only 2 missing values — imputed with the mode (`S`).
 
 ---
 
-## ⚙️ Preprocessing Pipeline (Manual)
+## 🛠️ Preprocessing Steps
 
-All steps are done manually without `ColumnTransformer` or `Pipeline`.
+Both notebooks apply the exact same preprocessing, just structured differently.
 
-### Step 1 — Drop Irrelevant Columns
+### Step 1 — Imputation
+- `Age`: filled with **mean** using `SimpleImputer(strategy='mean')`
+- `Embarked`: filled with **mode** using `SimpleImputer(strategy='most_frequent')`
 
-```python
-df.drop(columns=["PassengerId", "Name", "Ticket", "Cabin"], inplace=True)
-```
+### Step 2 — One-Hot Encoding
+- `Sex`: encoded into 2 binary columns (`female`, `male`)
+- `Embarked`: encoded into 3 binary columns (`C`, `Q`, `S`)
 
-| Column | Reason for Dropping |
-|---|---|
-| `PassengerId` | Unique row index — zero predictive signal |
-| `Name` | High cardinality text; title extraction would need feature engineering |
-| `Ticket` | Mixed alphanumeric format with no consistent pattern |
-| `Cabin` | 77% missing — too sparse to impute reliably |
+`handle_unknown='ignore'` is set so unseen categories at prediction time don't
+cause errors. `sparse_output=False` returns a dense numpy array.
 
-### Step 2 — Train-Test Split
+### Step 3 — Feature Scaling
+All features are scaled to the **[0, 1]** range using `MinMaxScaler`.
+This is required before `SelectKBest(chi2)` because chi-squared scores
+are not defined for negative values.
 
-```python
-x_train, x_test, y_train, y_test = train_test_split(
-    x, y,
-    test_size=0.2,
-    random_state=42,
-    stratify=y        # Preserves class ratio in both splits
-)
-# Train: 712 rows | Test: 179 rows
-```
+### Step 4 — Feature Selection
+`SelectKBest(score_func=chi2, k=8)` keeps the **8 most statistically
+significant features** out of the 10 available after encoding.
+Chi-squared tests measure the dependency between each feature and the target,
+discarding features with low signal.
 
-The split is done **before any preprocessing** to prevent data leakage. The test set must remain completely unseen during imputer/encoder fitting.
+### Step 5 — Classification
+`DecisionTreeClassifier` is used as the final estimator.
 
-### Step 3 — Imputation
+---
 
-```python
-from sklearn.impute import SimpleImputer
+## ⚙️ Approach 1 — Manual Preprocessing (`without_pipeline.ipynb`)
 
-si_age      = SimpleImputer()                          # strategy='mean' by default
-si_embarked = SimpleImputer(strategy='most_frequent')  # fills with 'S'
-```
-
-| Column | Strategy | Fit On | Transform |
-|---|---|---|---|
-| `Age` | Mean | x_train only | Both x_train and x_test |
-| `Embarked` | Most frequent | x_train only | Both x_train and x_test |
+In this notebook, every preprocessing step is done by hand:
 
 ```python
-# Fit on train, transform both
+# Impute
+si_age      = SimpleImputer()
+si_embarked = SimpleImputer(strategy="most_frequent")
+
 x_train_age      = si_age.fit_transform(x_train[['Age']])
 x_train_embarked = si_embarked.fit_transform(x_train[['Embarked']])
 
-x_test_age      = si_age.transform(x_test[['Age']])            # .transform() only!
-x_test_embarked = si_embarked.transform(x_test[['Embarked']]) # .transform() only!
-```
+# Encode
+ohe_sex      = OneHotEncoder(sparse_output=False, handle_unknown="ignore")
+ohe_embarked = OneHotEncoder(sparse_output=False, handle_unknown="ignore")
 
-### Step 4 — One-Hot Encoding
-
-```python
-from sklearn.preprocessing import OneHotEncoder
-
-ohe_sex      = OneHotEncoder(sparse_output=False, handle_unknown='ignore')
-ohe_embarked = OneHotEncoder(sparse_output=False, handle_unknown='ignore')
-```
-
-| Column | Output Columns | Output Shape |
-|---|---|---|
-| `Sex` | female, male | (n, 2) |
-| `Embarked` | C, Q, S | (n, 3) |
-
-```python
 x_train_sex      = ohe_sex.fit_transform(x_train[['Sex']])
 x_train_embarked = ohe_embarked.fit_transform(x_train_embarked)
 
-x_test_sex      = ohe_sex.transform(x_test[['Sex']])
-x_test_embarked = ohe_embarked.transform(x_test_embarked)
-```
-
-### Step 5 — Remove Original Categorical Columns
-
-```python
-x_train_rem = x_train.drop(columns=['Sex', 'Age', 'Embarked'])
-x_test_rem  = x_test.drop(columns=['Sex', 'Age', 'Embarked'])
-# Remaining numeric: Pclass, SibSp, Parch, Fare
-```
-
-### Step 6 — Assemble Final Feature Matrix
-
-```python
+# Drop original columns and concatenate everything manually
+x_train_rem = x_train.drop(columns=["Sex", "Age", "Embarked"])
 x_train_transformed = np.concatenate(
     (x_train_rem, x_train_age, x_train_embarked, x_train_sex), axis=1
 )
-x_test_transformed = np.concatenate(
-    (x_test_rem, x_test_age, x_test_embarked, x_test_sex), axis=1  # identical order!
-)
 ```
 
-> ⚠️ The column order in `np.concatenate` must be **identical** for both train and test.
-> Swapping two arrays here silently passes wrong values to every prediction — no exception is raised.
+This works, but it has several real problems:
+
+**① Code duplication.** Every transformation has to be written twice — once
+for `x_train` and once for `x_test`. With 4+ steps, that's a lot of repeated
+code that can easily get out of sync.
+
+**② Risk of data leakage.** Each imputer and encoder must be `fit` on training
+data only, and then only `transform`-ed on test data. It's easy to accidentally
+call `fit_transform` on test data instead of just `transform`, which leaks
+test distribution into the training process. (This actually happened in Cell 38
+of this notebook — `si_age.fit_transform(x_test[['Age']])` was used instead of
+`si_age.transform(x_test[['Age']])`.)
+
+**③ Manual column tracking.** After encoding, the original `Sex`, `Age`, and
+`Embarked` columns must be manually dropped and the new arrays concatenated in
+the right order. Getting the order wrong causes silent bugs.
+
+**④ Not deployable as-is.** To make predictions on new data, you would need to
+manually re-apply every step in the exact right order with the fitted objects.
+There is no single object you can call `.predict()` on.
+
+### Results (Manual Approach)
+
+| Model | Train Accuracy | Test Accuracy |
+|-------|---------------|---------------|
+| `DecisionTreeClassifier` | **98.3%** | **60.9%** |
+| `GradientBoostingClassifier` | — | **60.9%** |
+
+The Decision Tree is **severely overfitting** — 98.3% on training data vs 60.9%
+on test data is a classic sign that the tree is memorizing the training set.
+This is expected without any depth limit or regularization on the tree.
+
+```
+              precision    recall  f1-score   support
+           0       0.66      0.75      0.70       110
+           1       0.49      0.39      0.44        69
+    accuracy                           0.61       179
+```
 
 ---
 
-## 📐 Feature Matrix
+## ⚙️ Approach 2 — sklearn Pipeline (`Titanic_by_pipelining.ipynb`)
 
-After all preprocessing, the final input matrix has **10 columns**:
-
-| Index | Feature | Source |
-|---|---|---|
-| 0 | `Pclass` | Original numeric |
-| 1 | `SibSp` | Original numeric |
-| 2 | `Parch` | Original numeric |
-| 3 | `Fare` | Original numeric |
-| 4 | `Age` (imputed) | Mean-imputed |
-| 5 | `Embarked_C` | One-hot encoded |
-| 6 | `Embarked_Q` | One-hot encoded |
-| 7 | `Embarked_S` | One-hot encoded |
-| 8 | `Sex_female` | One-hot encoded |
-| 9 | `Sex_male` | One-hot encoded |
-
-**Shape:** `x_train_transformed` → (712, 10) | `x_test_transformed` → (179, 10)
-
----
-
-## 🤖 Models
-
-### 1. Decision Tree Classifier
+The same preprocessing is refactored into a `sklearn` Pipeline with 5 named steps:
 
 ```python
-from sklearn.tree import DecisionTreeClassifier
+from sklearn.pipeline import Pipeline
 
-clf = DecisionTreeClassifier()
-clf.fit(x_train_transformed, y_train)
+pipe = Pipeline([
+    ("trf1", trf1),   # Imputation
+    ("trf2", trf2),   # One-Hot Encoding
+    ("trf3", trf3),   # MinMax Scaling
+    ("trf4", trf4),   # Feature Selection (SelectKBest chi2)
+    ("trf5", trf5),   # DecisionTreeClassifier
+])
+
+pipe.fit(x_train, y_train)    # All 5 steps, in one call
+pipe.predict(x_test)          # Applies all transforms + predicts, in one call
 ```
 
-**How it works:** Recursively splits the feature space using the threshold that best separates classes (Gini impurity). Without depth constraints, it grows until every training sample is perfectly classified — memorising noise and outliers.
-
-**Known limitation:** No `max_depth`, `min_samples_split`, or `min_samples_leaf` is set here, which causes severe overfitting.
-
-| Metric | Train Score | Test Score |
-|---|---|---|
-| Accuracy | ~100% | ~75–78% |
-
-### 2. Gradient Boosting Classifier
+Or equivalently using `make_pipeline` (no need to name each step manually):
 
 ```python
-from sklearn.ensemble import GradientBoostingClassifier
+from sklearn.pipeline import make_pipeline
 
-clf = GradientBoostingClassifier(
-    n_estimators=100,    # 100 weak learners (shallow trees)
-    learning_rate=0.1,   # Shrinkage — each tree contributes 10% of its correction
-    random_state=42
-)
+pipe = make_pipeline(trf1, trf2, trf3, trf4, trf5)
 ```
 
-**How it works:** Builds trees **sequentially**. Each new tree corrects the residual errors of the current ensemble. The `learning_rate` acts as regularisation — smaller values force the model to learn slowly, reducing overfitting at the cost of needing more trees.
+### Why Pipeline is better
 
-**Advantage:** Better generalisation than a single Decision Tree due to the sequential error-correction mechanism.
+**① No leakage by design.** When you call `pipe.fit(x_train, y_train)`, sklearn
+calls `fit_transform` on each step using only the training data. When you call
+`pipe.predict(x_test)`, it calls `transform` (not `fit_transform`) for every
+intermediate step automatically. You can't accidentally leak.
 
-| Metric | Train Score | Test Score |
-|---|---|---|
-| Accuracy | ~88–90% | ~82–84% |
+**② Single deployable object.** The fitted `pipe` object contains every fitted
+transformer and the final model. Save it with `joblib.dump(pipe, 'model.pkl')`,
+load it anywhere, and call `pipe.predict(new_data)`. Nothing else needed.
+
+**③ Clean, readable code.** 5 lines to define the full ML workflow instead of
+30+ lines of manual concatenation.
+
+**④ Grid search ready.** `GridSearchCV` and `cross_val_score` work directly with
+a Pipeline. You can tune hyperparameters from any step (e.g., the `k` in
+`SelectKBest` or the `max_depth` of the tree) with a single call.
 
 ---
 
-## 📊 Results & Evaluation
+## 🐛 Bug Encountered & Fix
 
-Both models are evaluated with:
+### The Error
+
+```
+ValueError: could not convert string to float: 'male'
+```
+
+The pipeline crashed at `pipe.fit(x_train, y_train)`, specifically inside
+`trf4` (`SelectKBest`), which only accepts numeric data. The `Sex` column —
+containing strings `'male'`/`'female'` — was never one-hot encoded, and
+slipped all the way through to `trf4` as raw text.
+
+### Root Cause — Column Index Drift
+
+The bug originated in `trf2`, not `trf4`. This is what makes it tricky: the
+mistake is made silently two steps earlier, and only explodes later.
+
+When `ColumnTransformer` uses `remainder='passthrough'`, it **reorders the
+output columns**: the explicitly-specified columns come out first, followed by
+the remaining (passthrough) columns in their original order.
+
+After `trf1` — which specified `Age` (index 2) and `Embarked` (index 6) for
+imputation — the output column order changed:
+
+**Input to trf1 (original order):**
+
+| Index | 0 | 1 | 2 | 3 | 4 | 5 | 6 |
+|-------|---|---|---|---|---|---|---|
+| Column | Pclass | Sex | Age | SibSp | Parch | Fare | Embarked |
+
+**Output of trf1 (reordered by ColumnTransformer):**
+
+| Index | 0 | 1 | 2 | 3 | 4 | 5 | 6 |
+|-------|---|---|---|---|---|---|---|
+| Column | Age | Embarked | Pclass | **Sex** | SibSp | Parch | Fare |
+
+`trf2` was written with the original indices `[1, 6]` — which were
+`Sex` and `Embarked` in the original DataFrame. But after `trf1`, index `1`
+is now `Embarked` and index `6` is `Fare`. So `trf2` encoded
+**Embarked and Fare** instead of **Sex and Embarked**. `Sex` was passed through
+as raw strings with no error or warning.
+
+### The Fix
+
+Update `trf2` to use the **post-trf1 column positions**:
 
 ```python
-from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
+# ❌ Bug — uses original indices, before trf1 reshuffles the columns
+trf2 = ColumnTransformer([
+    ("ohe_sex_embarked", OneHotEncoder(sparse_output=False, handle_unknown="ignore"),
+     [1, 6])   # index 1 = Embarked (not Sex!), index 6 = Fare (not Embarked!)
+], remainder="passthrough")
 
-print(accuracy_score(y_test, y_pred))
-print(classification_report(y_test, y_pred))
-print(confusion_matrix(y_test, y_pred))
-
-# Overfitting check
-print("Train:", clf.score(x_train_transformed, y_train))
-print("Test :", clf.score(x_test_transformed, y_test))
+# ✅ Fix — uses post-trf1 indices: Sex is now at 3, Embarked is now at 1
+trf2 = ColumnTransformer([
+    ("ohe_sex_embarked", OneHotEncoder(sparse_output=False, handle_unknown="ignore"),
+     [1, 3])
+], remainder="passthrough")
 ```
 
-### Summary Comparison
+### Better Long-Term Fix — Use Column Names
 
-| Model | Train Acc | Test Acc | Gap | Verdict |
-|---|---|---|---|---|
-| Decision Tree (unconstrained) | ~100% | ~75–78% | ~22–25% | Heavily overfit |
-| Gradient Boosting | ~88–90% | ~82–84% | ~5–6% | Acceptable generalisation |
-
-> Exact values will vary slightly. Run the notebook to see the actual outputs.
-
----
-
-## 🐛 Bugs Found & Fixed
-
-Three significant bugs were identified and corrected during development:
-
-### Bug 1 — `fit_transform` on Test Data (Data Leakage)
+Hardcoded integer indices are inherently fragile across chained
+`ColumnTransformer` steps. The robust solution is `.set_output(transform="pandas")`,
+which makes each transformer output a DataFrame with column names preserved:
 
 ```python
-# WRONG — refits the imputer using test set statistics
-x_test_age = si_age.fit_transform(x_test[['Age']])
+trf1 = ColumnTransformer([
+    ("impute_age",      SimpleImputer(),                         ["Age"]),
+    ("impute_embarked", SimpleImputer(strategy="most_frequent"), ["Embarked"])
+], remainder="passthrough").set_output(transform="pandas")
 
-# CORRECT — uses the mean learned from training data only
-x_test_age = si_age.transform(x_test[['Age']])
+trf2 = ColumnTransformer([
+    ("ohe_sex_embarked", OneHotEncoder(sparse_output=False, handle_unknown="ignore"),
+     ["Sex", "Embarked"])
+], remainder="passthrough").set_output(transform="pandas")
 ```
 
-**Root cause:** `fit_transform` = `fit` + `transform`. Calling it on the test set computes a new mean from test data, overriding what was learned from training.
-
-**Impact:** Subtle data leakage. The imputer uses a different fill value for test data than training data, which is statistically incorrect and makes test evaluation unreliable.
+Now `trf2` finds `Sex` and `Embarked` by name — regardless of what order
+`trf1` produced them in. No manual index tracking needed at any step.
 
 ---
 
-### Bug 2 — Column Order Mismatch in `np.concatenate` (Most Critical)
+## 📊 Pipeline Architecture (Visual Summary)
 
-```python
-# WRONG — embarked and sex are SWAPPED for test
-x_train_transformed = np.concatenate((x_train_rem, x_train_age, x_train_embarked, x_train_sex), axis=1)
-x_test_transformed  = np.concatenate((x_test_rem,  x_test_age,  x_test_sex, x_test_embarked), axis=1)
-#                                                                ^^^^^^^^^^^ ^^^^^^^^^^^^^^^  swapped!
-
-# CORRECT — identical order for both
-x_test_transformed = np.concatenate((x_test_rem, x_test_age, x_test_embarked, x_test_sex), axis=1)
 ```
-
-**Root cause:** A simple copy-paste swap of two variable names. NumPy arrays have no column names — they are just numbers. The model is told nothing about the swap.
-
-**Impact:** The most damaging bug. The model reads `Sex` values where it expects `Embarked` and vice versa during every test prediction. No error is thrown. The model silently produces wrong predictions, causing a large unexplained accuracy drop.
-
----
-
-### Bug 3 — Unconstrained Decision Tree (Overfitting)
-
-```python
-# PROBLEMATIC — no regularisation, memorises training data
-clf = DecisionTreeClassifier()
-
-# BETTER — add constraints to prevent overfitting
-clf = DecisionTreeClassifier(max_depth=4, min_samples_leaf=5, min_samples_split=10)
+x_train (712 rows × 7 cols)
+    │
+    ▼
+┌─────────────────────────────────────────────────────────────┐
+│  trf1 — ColumnTransformer (Imputation)                      │
+│  • SimpleImputer(mean)          → fills Age (137 missing)   │
+│  • SimpleImputer(most_frequent) → fills Embarked (2 miss.)  │
+│  Output: 712 × 7  (all values filled, columns reordered)   │
+└─────────────────────────────────────────────────────────────┘
+    │
+    ▼
+┌─────────────────────────────────────────────────────────────┐
+│  trf2 — ColumnTransformer (One-Hot Encoding)                │
+│  • OHE(Sex)      → 2 binary cols  [female, male]           │
+│  • OHE(Embarked) → 3 binary cols  [C, Q, S]               │
+│  Output: 712 × 10 (5 orig numeric + 2 sex + 3 embarked)    │
+└─────────────────────────────────────────────────────────────┘
+    │
+    ▼
+┌─────────────────────────────────────────────────────────────┐
+│  trf3 — ColumnTransformer (MinMaxScaler)                    │
+│  • Scales all 10 features to [0, 1]                        │
+│  • Required for chi2 (no negative values allowed)           │
+│  Output: 712 × 10 (same shape, values in [0,1])            │
+└─────────────────────────────────────────────────────────────┘
+    │
+    ▼
+┌─────────────────────────────────────────────────────────────┐
+│  trf4 — SelectKBest(chi2, k=8)                              │
+│  • Scores all 10 features by chi-squared statistic         │
+│  • Keeps top 8, drops 2 least significant                  │
+│  Output: 712 × 8                                           │
+└─────────────────────────────────────────────────────────────┘
+    │
+    ▼
+┌─────────────────────────────────────────────────────────────┐
+│  trf5 — DecisionTreeClassifier                              │
+│  • Trains on the 8 selected features                       │
+│  Output: fitted model                                      │
+└─────────────────────────────────────────────────────────────┘
 ```
-
-**Root cause:** Default `DecisionTreeClassifier` has `max_depth=None`, meaning it grows until all leaves are pure or contain fewer than `min_samples_split` samples (default: 2).
-
-**Impact:** Train accuracy ~100%, test accuracy ~20% lower. The model has memorised the training set and cannot generalise to new data.
-
----
-
-## 💡 Key Learnings
-
-| # | Concept | Lesson |
-|---|---|---|
-| 1 | **Fit/Transform discipline** | `fit_transform()` on train only. `transform()` on everything else. Fitting on test data leaks distribution statistics and is conceptually wrong. |
-| 2 | **Column order is contract** | `np.concatenate` stacks raw arrays — it has no column names. If order differs between train and test, predictions are silently corrupted with zero exceptions raised. |
-| 3 | **Overfitting vs generalisation** | Unconstrained Decision Tree memorises training data (100% train acc). Gradient Boosting corrects incrementally and generalises better. |
-| 4 | **Stratified splits** | `stratify=y` ensures both splits have the same ratio of survivors, preventing a skewed or unrepresentative test set. |
-| 5 | **Why Pipelines exist** | Bugs 1 and 2 above are structurally impossible in a `Pipeline` + `ColumnTransformer` setup. The pipeline enforces correct fit/transform flow and manages column ordering automatically. |
-
----
-
-## ⚖️ Manual vs Pipeline — Comparison
-
-| Aspect | Manual (This Notebook) | With `Pipeline` + `ColumnTransformer` |
-|---|---|---|
-| Lines of code | ~30 lines for preprocessing | ~10 lines |
-| Data leakage risk | High — easy to `fit_transform` test data | None — pipeline enforces correct flow |
-| Column order bugs | High — `np.concatenate` ordering is manual | None — `ColumnTransformer` handles it |
-| Readability | Verbose, many intermediate variables | Concise, single pipeline object |
-| `cross_val_score` compatible | No — requires re-running manually | Yes — plug directly into CV |
-| `GridSearchCV` compatible | No | Yes |
-| Learning value | Very high — every step is visible | Lower — internal details abstracted |
-
-> **Takeaway:** Do the manual approach once to understand the internals. Use Pipelines for everything real.
 
 ---
 
 ## 🚀 How to Run
 
-### Option A — Google Colab
-
-1. Upload `Titanic_without_pipeline.ipynb` to [Google Colab](https://colab.research.google.com/)
-2. Upload `train.csv` to your Google Drive
-3. Update the dataset path in Cell 2:
-   ```python
-   df = pd.read_csv("/content/drive/MyDrive/your_path/train.csv")
-   ```
-4. Runtime → Run All
-
-### Option B — Local Jupyter
-
-```bash
-# 1. Clone the repo
-git clone https://github.com/your-username/titanic-without-pipeline.git
-cd titanic-without-pipeline
-
-# 2. Create a virtual environment (optional but recommended)
-python -m venv venv
-source venv/bin/activate       # Linux / macOS
-venv\Scripts\activate          # Windows
-
-# 3. Install dependencies
-pip install -r requirements.txt
-
-# 4. Launch the notebook
-jupyter notebook Titanic_without_pipeline.ipynb
+### 1. Mount Google Drive (Colab)
+```python
+from google.colab import drive
+drive.mount('/content/drive')
 ```
 
-5. Update the CSV path in Cell 2 to your local path:
-   ```python
-   df = pd.read_csv("train.csv")
-   ```
-
----
-
-## 🛠️ Dependencies
-
-```
-numpy>=1.21
-pandas>=1.3
-scikit-learn>=1.0
-seaborn>=0.11
-matplotlib>=3.4
+### 2. Install dependencies (all are pre-installed in Colab)
+```python
+# No additional installs needed
+# numpy, pandas, scikit-learn, seaborn, matplotlib are available by default
 ```
 
-Install all at once:
-```bash
-pip install numpy pandas scikit-learn seaborn matplotlib
-```
+### 3. Run the notebooks in order
+- Run `without_pipeline.ipynb` first to understand the raw preprocessing logic
+- Then run `Titanic_by_pipelining.ipynb` to see the same logic in Pipeline form
 
-| Library | Purpose |
-|---|---|
-| `pandas` | Data loading, EDA, DataFrame manipulation |
-| `numpy` | Array operations, `np.concatenate` for feature assembly |
-| `scikit-learn` | `SimpleImputer`, `OneHotEncoder`, `train_test_split`, classifiers, metrics |
-| `seaborn` | Pairplot and heatmap visualisations |
-| `matplotlib` | Underlying plotting engine |
+### 4. Save the trained pipeline
+```python
+import joblib
+joblib.dump(pipe, 'titanic_pipeline.pkl')
 
----
-
-## 📁 Repository Structure
-
-```
-titanic-without-pipeline/
-│
-├── Titanic_without_pipeline.ipynb   ← Main notebook
-├── train.csv                        ← Dataset (download from Kaggle)
-├── requirements.txt                 ← Python dependencies
-└── README.md                        ← This file
+# Load and predict on new data later
+pipe = joblib.load('titanic_pipeline.pkl')
+pipe.predict(new_data)
 ```
 
 ---
 
-## 🔗 Next Steps
+## 🧠 Key Takeaways
 
-- [ ] **Day 30** — Replicate this workflow using `sklearn.pipeline.Pipeline` + `ColumnTransformer`
-- [ ] Add `GridSearchCV` for Decision Tree hyperparameter tuning (`max_depth`, `min_samples_leaf`)
-- [ ] Add `RandomForestClassifier` for comparison
-- [ ] Feature engineering ideas:
-  - Extract passenger title from `Name` (Mr, Mrs, Miss, Master)
-  - Create `FamilySize = SibSp + Parch + 1`
-  - Create `IsAlone` binary flag
-- [ ] Apply `StandardScaler` to numeric features and observe effect on tree-based models
-- [ ] Use `cross_val_score` for a more reliable accuracy estimate
+**1. Pipelines prevent data leakage by construction.**
+With manual preprocessing, it's easy to accidentally call `fit_transform` on
+test data. A Pipeline handles the `fit` vs `transform` distinction automatically.
+
+**2. `ColumnTransformer` with `remainder='passthrough'` reorders columns.**
+Specified columns come first, passthrough columns come after — in their original
+order. Hardcoded integer indices in a downstream step will point to wrong columns.
+Always verify indices after each `ColumnTransformer` step, or switch to column
+names with `.set_output(transform="pandas")`.
+
+**3. Silent bugs are the most dangerous kind.**
+The `Sex` column slipped through `trf2` unencoded with no error or warning.
+The crash only happened two steps later at `trf4`. When debugging a pipeline,
+always trace the error back to the actual source, not just where it explodes.
+
+**4. A high train accuracy with low test accuracy means overfitting.**
+The Decision Tree hit 98.3% on training data but only 60.9% on test — a clear
+sign it memorized the training set. Regularization (`max_depth`, `min_samples_leaf`)
+or a better ensemble model would help.
+
+**5. Pipelines are deployment-ready objects.**
+A fitted `pipe` can be serialized with `joblib` and loaded anywhere. It applies
+all preprocessing and predicts in a single call — no manual reconstruction of
+the transformation steps needed.
 
 ---
 
-## 🙌 Acknowledgements
+## 📁 File Structure
 
-- [Kaggle Titanic Competition](https://www.kaggle.com/competitions/titanic) for the dataset
-- [scikit-learn Documentation](https://scikit-learn.org/stable/) — `SimpleImputer`, `OneHotEncoder`, classifiers reference
-
+```
+📦 Titanic - Pipelining
+ ┣ 📓 without_pipeline.ipynb      ← Manual preprocessing approach
+ ┣ 📓 Titanic_by_pipelining.ipynb ← sklearn Pipeline approach (this file)
+ ┣ 📄 train.csv                   ← Titanic training data
+ ┗ 📄 README.md                   ← You are here
+```
 
 ---
 
-<div align="center">
+## 📚 References
 
-⭐ If this helped you understand manual preprocessing, consider giving it a star!
-
-</div>
+- [sklearn Pipeline docs](https://scikit-learn.org/stable/modules/generated/sklearn.pipeline.Pipeline.html)
+- [sklearn ColumnTransformer docs](https://scikit-learn.org/stable/modules/generated/sklearn.compose.ColumnTransformer.html)
+- [Kaggle Titanic competition](https://www.kaggle.com/competitions/titanic)
+- [sklearn set_output API](https://scikit-learn.org/stable/auto_examples/miscellaneous/plot_set_output.html)
